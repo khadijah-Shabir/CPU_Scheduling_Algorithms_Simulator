@@ -1,18 +1,11 @@
 import streamlit as st
+import pandas as pd
 import plotly.figure_factory as ff
 import plotly.graph_objects as go
 import plotly.express as px
-import pandas as pd
-import numpy as np
-from datetime import datetime
-import time
 
 # Set page config
-st.set_page_config(
-    page_title="CPU Process Scheduler",
-    page_icon="🖥️",
-    layout="wide"
-)
+st.set_page_config(page_title="CPU Process Scheduler", page_icon="🖥️", layout="wide")
 
 # Custom CSS
 st.markdown("""
@@ -26,9 +19,6 @@ st.markdown("""
     .stSelectbox select {
         background-color: white;
     }
-    .css-1d391kg {
-        padding: 1rem;
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -36,14 +26,13 @@ st.markdown("""
 st.title("CPU Process Scheduler Visualization")
 st.markdown("""
     This tool helps you understand various CPU scheduling algorithms through interactive
-    visualization. Add processes, configure parameters, and see real-time results.
+    visualization. Add processes, select an algorithm, and see the results in real-time.
 """)
 
-# Sidebar configuration
+# Sidebar for input and configuration
 with st.sidebar:
     st.header("Configuration")
     
-    # Algorithm selection
     algorithm = st.selectbox(
         "Select Scheduling Algorithm",
         [
@@ -52,190 +41,304 @@ with st.sidebar:
             "Shortest Remaining Time First (SRTF)",
             "Round Robin (RR)",
             "Priority (Non-Preemptive)",
-            "Priority (Preemptive)",
-            "Longest Remaining Time First (LRTF)",
-            "Highest Response Ratio Next (HRRN)"
+            "Priority (Preemptive)"
         ]
     )
     
-    # Time quantum for Round Robin
     if algorithm == "Round Robin (RR)":
         time_quantum = st.number_input("Time Quantum", min_value=1, value=2)
     
-    # Context switch time
-    context_switch_time = st.number_input("Context Switch Time", min_value=0, value=1)
-    
-    st.divider()
-    
-    # Instructions
-    st.markdown("""
-        ### Instructions:
-        1. Select scheduling algorithm
-        2. Add processes with arrival time and burst time
-        3. Configure additional parameters if needed
-        4. Click Calculate to see results
-    """)
+    context_switch_time = st.number_input("Context Switch Time", min_value=0, value=0)
 
-# Main content
-col1, col2 = st.columns([2, 1])
+# Initialize session state for processes
+if 'processes' not in st.session_state:
+    st.session_state.processes = pd.DataFrame(columns=['Process ID', 'Arrival Time', 'Burst Time', 'Priority'])
 
-with col1:
-    # Process input section
-    st.subheader("Process Information")
+# Process input form
+st.header("Add Process")
+with st.form("process_input_form"):
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        process_id = st.text_input("Process ID")
+    with col2:
+        arrival_time = st.number_input("Arrival Time", min_value=0)
+    with col3:
+        burst_time = st.number_input("Burst Time", min_value=1)
+    with col4:
+        priority = st.number_input("Priority", min_value=1)
     
-    # Create a dataframe for processes
-    if 'processes' not in st.session_state:
-        st.session_state.processes = pd.DataFrame({
-            'Process ID': ['P1'],
-            'Arrival Time': [0],
-            'Burst Time': [1],
-            'Priority': [1]
+    submitted = st.form_submit_button("Add Process")
+    if submitted:
+        new_process = pd.DataFrame({
+            'Process ID': [process_id],
+            'Arrival Time': [arrival_time],
+            'Burst Time': [burst_time],
+            'Priority': [priority]
         })
-    
-    # Edit processes in a data editor
-    edited_df = st.data_editor(
-        st.session_state.processes,
-        num_rows="dynamic",
-        hide_index=True,
-        column_config={
-            "Process ID": st.column_config.TextColumn(
-                "Process ID",
-                help="Unique identifier for the process",
-                width="medium",
-            ),
-            "Arrival Time": st.column_config.NumberColumn(
-                "Arrival Time",
-                help="Time at which process arrives",
-                min_value=0,
-                width="medium",
-            ),
-            "Burst Time": st.column_config.NumberColumn(
-                "Burst Time",
-                help="CPU time required by the process",
-                min_value=1,
-                width="medium",
-            ),
-            "Priority": st.column_config.NumberColumn(
-                "Priority",
-                help="Process priority (lower number = higher priority)",
-                min_value=1,
-                width="medium",
-            ),
-        }
-    )
-    
-    st.session_state.processes = edited_df
+        st.session_state.processes = pd.concat([st.session_state.processes, new_process], ignore_index=True)
 
-with col2:
-    # Statistics and metrics
-    st.subheader("Process Statistics")
-    metrics_df = pd.DataFrame({
-        'Metric': ['Average Waiting Time', 'Average Turnaround Time', 
-                  'Average Response Time', 'CPU Utilization'],
-        'Value': ['0.0 ms', '0.0 ms', '0.0 ms', '0%']
-    })
-    st.dataframe(metrics_df, hide_index=True)
+# Display and edit processes
+st.subheader("Current Processes")
+edited_df = st.data_editor(
+    st.session_state.processes,
+    num_rows="dynamic",
+    use_container_width=True,
+    hide_index=True,
+)
+st.session_state.processes = edited_df
 
-# Visualization section
-st.subheader("Process Visualization")
+if st.button("Clear All Processes"):
+    st.session_state.processes = pd.DataFrame(columns=['Process ID', 'Arrival Time', 'Burst Time', 'Priority'])
+    st.rerun()
 
-# Tabs for different visualizations
-tab1, tab2, tab3 = st.tabs(["Gantt Chart", "Timeline", "Comparison Metrics"])
-
-with tab1:
-    # Sample Gantt chart
-    df = pd.DataFrame([
-        dict(Task="P1", Start=0, Finish=4, Resource="CPU"),
-        dict(Task="P2", Start=4, Finish=8, Resource="CPU"),
-        dict(Task="P3", Start=8, Finish=12, Resource="CPU"),
-    ])
+# Scheduling algorithms
+def fcfs(processes):
+    processes = processes.sort_values('Arrival Time')
+    current_time = 0
+    schedule = []
     
-    fig = ff.create_gantt(df, colors=['#779ECB'], 
-                         show_colorbar=True,
-                         group_tasks=True, 
-                         showgrid_x=True, 
-                         showgrid_y=True)
-    
-    fig.update_layout(
-        title="Process Execution Gantt Chart",
-        xaxis_title="Time (ms)",
-        height=400,
-        showlegend=True
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-
-with tab2:
-    # Timeline visualization
-    timeline_fig = go.Figure()
-    
-    for idx, process in enumerate(['P1', 'P2', 'P3']):
-        timeline_fig.add_trace(go.Scatter(
-            x=[0, 4, 8, 12],
-            y=[idx, idx, idx, idx],
-            mode='lines+markers',
-            name=process,
-            line=dict(width=20)
-        ))
-    
-    timeline_fig.update_layout(
-        title="Process Timeline",
-        xaxis_title="Time (ms)",
-        yaxis_title="Process",
-        height=400,
-        showlegend=True
-    )
-    
-    st.plotly_chart(timeline_fig, use_container_width=True)
-
-with tab3:
-    # Comparison metrics visualization
-    metrics = {
-        'Completion Time': [60, 45, 50],
-        'Turn Around Time': [58, 42, 45],
-        'Waiting Time': [48, 32, 35],
-        'Response Time': [10, 8, 12]
-    }
-    
-    comparison_df = pd.DataFrame(metrics)
-    comparison_fig = px.bar(
-        comparison_df, 
-        barmode='group',
-        title="Process Metrics Comparison"
-    )
-    
-    comparison_fig.update_layout(
-        xaxis_title="Metrics",
-        yaxis_title="Time (ms)",
-        height=400
-    )
-    
-    st.plotly_chart(comparison_fig, use_container_width=True)
-
-# Control buttons
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    if st.button("Calculate", type="primary"):
-        with st.spinner("Calculating..."):
-            time.sleep(1)  # Simulate calculation
-            st.success("Calculation completed!")
-
-with col2:
-    if st.button("Reset"):
-        st.session_state.processes = pd.DataFrame({
-            'Process ID': ['P1'],
-            'Arrival Time': [0],
-            'Burst Time': [1],
-            'Priority': [1]
+    for _, process in processes.iterrows():
+        if current_time < process['Arrival Time']:
+            current_time = process['Arrival Time']
+        
+        start_time = current_time
+        end_time = current_time + process['Burst Time']
+        
+        schedule.append({
+            'Task': process['Process ID'],
+            'Start': start_time,
+            'Finish': end_time,
+            'Resource': 'CPU'
         })
-        st.rerun()
+        
+        current_time = end_time + context_switch_time
+    
+    return pd.DataFrame(schedule)
 
-with col3:
-    if st.button("Animate"):
-        with st.spinner("Animating process execution..."):
-            time.sleep(1)  # Simulate animation
-            st.info("Animation completed!")
+def sjf(processes):
+    processes = processes.sort_values('Arrival Time')
+    current_time = 0
+    remaining_processes = processes.copy()
+    schedule = []
+    
+    while not remaining_processes.empty:
+        available_processes = remaining_processes[remaining_processes['Arrival Time'] <= current_time]
+        
+        if available_processes.empty:
+            current_time = remaining_processes['Arrival Time'].min()
+            continue
+        
+        next_process = available_processes.loc[available_processes['Burst Time'].idxmin()]
+        
+        start_time = current_time
+        end_time = current_time + next_process['Burst Time']
+        
+        schedule.append({
+            'Task': next_process['Process ID'],
+            'Start': start_time,
+            'Finish': end_time,
+            'Resource': 'CPU'
+        })
+        
+        current_time = end_time + context_switch_time
+        remaining_processes = remaining_processes[remaining_processes['Process ID'] != next_process['Process ID']]
+    
+    return pd.DataFrame(schedule)
+
+def srtf(processes):
+    processes = processes.copy()
+    processes['Remaining Time'] = processes['Burst Time']
+    current_time = 0
+    schedule = []
+    
+    while not processes.empty:
+        available_processes = processes[processes['Arrival Time'] <= current_time]
+        
+        if available_processes.empty:
+            current_time = processes['Arrival Time'].min()
+            continue
+        
+        next_process = available_processes.loc[available_processes['Remaining Time'].idxmin()]
+        
+        start_time = current_time
+        run_time = min(1, next_process['Remaining Time'])  # Run for 1 time unit or until completion
+        end_time = current_time + run_time
+        
+        schedule.append({
+            'Task': next_process['Process ID'],
+            'Start': start_time,
+            'Finish': end_time,
+            'Resource': 'CPU'
+        })
+        
+        current_time = end_time
+        processes.loc[next_process.name, 'Remaining Time'] -= run_time
+        
+        if processes.loc[next_process.name, 'Remaining Time'] == 0:
+            processes = processes[processes['Process ID'] != next_process['Process ID']]
+        
+        current_time += context_switch_time
+    
+    return pd.DataFrame(schedule)
+
+def round_robin(processes, time_quantum):
+    processes = processes.copy()
+    processes['Remaining Time'] = processes['Burst Time']
+    current_time = 0
+    schedule = []
+    
+    while not processes.empty:
+        for index, process in processes.iterrows():
+            if process['Arrival Time'] <= current_time:
+                start_time = current_time
+                run_time = min(time_quantum, process['Remaining Time'])
+                end_time = current_time + run_time
+                
+                schedule.append({
+                    'Task': process['Process ID'],
+                    'Start': start_time,
+                    'Finish': end_time,
+                    'Resource': 'CPU'
+                })
+                
+                current_time = end_time
+                processes.loc[index, 'Remaining Time'] -= run_time
+                
+                if processes.loc[index, 'Remaining Time'] == 0:
+                    processes = processes.drop(index)
+                
+                current_time += context_switch_time
+        
+        if processes.empty:
+            break
+        
+        current_time = max(current_time, processes['Arrival Time'].min())
+    
+    return pd.DataFrame(schedule)
+
+def priority_non_preemptive(processes):
+    processes = processes.sort_values('Arrival Time')
+    current_time = 0
+    remaining_processes = processes.copy()
+    schedule = []
+    
+    while not remaining_processes.empty:
+        available_processes = remaining_processes[remaining_processes['Arrival Time'] <= current_time]
+        
+        if available_processes.empty:
+            current_time = remaining_processes['Arrival Time'].min()
+            continue
+        
+        next_process = available_processes.loc[available_processes['Priority'].idxmin()]
+        
+        start_time = current_time
+        end_time = current_time + next_process['Burst Time']
+        
+        schedule.append({
+            'Task': next_process['Process ID'],
+            'Start': start_time,
+            'Finish': end_time,
+            'Resource': 'CPU'
+        })
+        
+        current_time = end_time + context_switch_time
+        remaining_processes = remaining_processes[remaining_processes['Process ID'] != next_process['Process ID']]
+    
+    return pd.DataFrame(schedule)
+
+def priority_preemptive(processes):
+    processes = processes.copy()
+    processes['Remaining Time'] = processes['Burst Time']
+    current_time = 0
+    schedule = []
+    
+    while not processes.empty:
+        available_processes = processes[processes['Arrival Time'] <= current_time]
+        
+        if available_processes.empty:
+            current_time = processes['Arrival Time'].min()
+            continue
+        
+        next_process = available_processes.loc[available_processes['Priority'].idxmin()]
+        
+        start_time = current_time
+        run_time = 1  # Run for 1 time unit
+        end_time = current_time + run_time
+        
+        schedule.append({
+            'Task': next_process['Process ID'],
+            'Start': start_time,
+            'Finish': end_time,
+            'Resource': 'CPU'
+        })
+        
+        current_time = end_time
+        processes.loc[next_process.name, 'Remaining Time'] -= run_time
+        
+        if processes.loc[next_process.name, 'Remaining Time'] == 0:
+            processes = processes[processes['Process ID'] != next_process['Process ID']]
+        
+        current_time += context_switch_time
+    
+    return pd.DataFrame(schedule)
+
+# Function to create Gantt chart
+def create_gantt_chart(schedule):
+    fig = ff.create_gantt(schedule, index_col='Resource', show_colorbar=True, group_tasks=True)
+    fig.update_layout(title="Process Execution Gantt Chart", xaxis_title="Time", height=400)
+    return fig
+
+# Calculate schedule based on selected algorithm
+if st.button("Calculate Schedule"):
+    if st.session_state.processes.empty:
+        st.warning("Please add processes before calculating the schedule.")
+    else:
+        if algorithm == "First Come First Serve (FCFS)":
+            schedule = fcfs(st.session_state.processes)
+        elif algorithm == "Shortest Job First (SJF)":
+            schedule = sjf(st.session_state.processes)
+        elif algorithm == "Shortest Remaining Time First (SRTF)":
+            schedule = srtf(st.session_state.processes)
+        elif algorithm == "Round Robin (RR)":
+            schedule = round_robin(st.session_state.processes, time_quantum)
+        elif algorithm == "Priority (Non-Preemptive)":
+            schedule = priority_non_preemptive(st.session_state.processes)
+        elif algorithm == "Priority (Preemptive)":
+            schedule = priority_preemptive(st.session_state.processes)
+        
+        # Display Gantt chart
+        st.plotly_chart(create_gantt_chart(schedule), use_container_width=True)
+        
+        # Calculate and display metrics
+        completion_times = schedule.groupby('Task')['Finish'].max()
+        arrival_times = st.session_state.processes.set_index('Process ID')['Arrival Time']
+        burst_times = st.session_state.processes.set_index('Process ID')['Burst Time']
+        
+        turnaround_times = completion_times - arrival_times
+        waiting_times = turnaround_times - burst_times
+        
+        metrics = pd.DataFrame({
+            'Completion Time': completion_times,
+            'Turnaround Time': turnaround_times,
+            'Waiting Time': waiting_times
+        })
+        
+        st.subheader("Process Metrics")
+        st.dataframe(metrics)
+        
+        # Display average metrics
+        st.subheader("Average Metrics")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Avg. Turnaround Time", f"{turnaround_times.mean():.2f}")
+        col2.metric("Avg. Waiting Time", f"{waiting_times.mean():.2f}")
+        col3.metric("Throughput", f"{len(schedule) / schedule['Finish'].max():.2f} processes/unit time")
+        
+        # Comparison chart
+        st.subheader("Metrics Comparison")
+        comparison_df = pd.melt(metrics.reset_index(), id_vars=['Task'], var_name='Metric', value_name='Time')
+        fig = px.bar(comparison_df, x='Task', y='Time', color='Metric', barmode='group')
+        fig.update_layout(title="Process Metrics Comparison", xaxis_title="Process", yaxis_title="Time")
+        st.plotly_chart(fig, use_container_width=True)
 
 # Footer
 st.markdown("---")
