@@ -61,7 +61,7 @@ def home_page():
         
         st.session_state.selected_algorithm = algo_mapping[selected_algo]
         st.session_state.current_page = 'input'
-        st.experimental_rerun()
+
 
 def input_page():
     st.title(f"Input for {st.session_state.selected_algorithm}")
