@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import matplotlib.pyplot as plt
 
 # Page navigation
 if "page" not in st.session_state:
@@ -22,6 +23,38 @@ def reset_inputs():
     st.session_state.burst_time = ""
     st.session_state.arrival_time = ""
     st.session_state.priority = ""
+
+# Helper function to calculate Gantt chart and metrics
+def simulate_fcfs(processes):
+    processes.sort(key=lambda x: x["Arrival Time"])
+    current_time = 0
+    waiting_times = []
+    turnaround_times = []
+    gantt_chart = []
+
+    for process in processes:
+        if current_time < process["Arrival Time"]:
+            current_time = process["Arrival Time"]
+        waiting_time = current_time - process["Arrival Time"]
+        turnaround_time = waiting_time + process["Burst Time"]
+        waiting_times.append(waiting_time)
+        turnaround_times.append(turnaround_time)
+        gantt_chart.append((process["Process ID"], current_time, current_time + process["Burst Time"]))
+        current_time += process["Burst Time"]
+
+    avg_waiting_time = sum(waiting_times) / len(processes)
+    avg_turnaround_time = sum(turnaround_times) / len(processes)
+    return gantt_chart, avg_waiting_time, avg_turnaround_time, waiting_times, turnaround_times
+
+def display_gantt_chart(gantt_chart):
+    fig, ax = plt.subplots(figsize=(10, 2))
+    for idx, (pid, start, end) in enumerate(gantt_chart):
+        ax.barh(0, end - start, left=start, height=0.5)
+        ax.text((start + end) / 2, 0, pid, ha="center", va="center", color="white")
+    ax.set_xlabel("Time")
+    ax.set_yticks([])
+    ax.set_title("Gantt Chart")
+    st.pyplot(fig)
 
 # Page 1: Welcome and Algorithm Selection
 if st.session_state.page == 1:
@@ -57,19 +90,14 @@ elif st.session_state.page == 2:
             for i in range(1, num_processes + 1):
                 st.write(f"Process P{i}")
                 st.number_input(f"Enter Burst Time of P{i}:", key=f"burst_time_{i}")
-                if "Shortest Job First" in st.session_state.selected_algorithm or "Priority Scheduling" in st.session_state.selected_algorithm:
-                    st.number_input(f"Enter Arrival Time of P{i}:", key=f"arrival_time_{i}")
-                if "Priority Scheduling" in st.session_state.selected_algorithm:
-                    st.number_input(f"Enter Priority of P{i}:", key=f"priority_{i}")
-
+                st.number_input(f"Enter Arrival Time of P{i}:", key=f"arrival_time_{i}")
             submitted = st.form_submit_button("Submit")
             if submitted:
                 st.session_state.processes = [
                     {
                         "Process ID": f"P{i}",
                         "Burst Time": st.session_state[f"burst_time_{i}"],
-                        "Arrival Time": st.session_state.get(f"arrival_time_{i}", None),
-                        "Priority": st.session_state.get(f"priority_{i}", None),
+                        "Arrival Time": st.session_state.get(f"arrival_time_{i}", 0),
                     }
                     for i in range(1, num_processes + 1)
                 ]
@@ -84,63 +112,6 @@ elif st.session_state.page == 3:
         process_df = pd.DataFrame(st.session_state.processes)
         st.table(process_df)
 
-        st.write("### Modify Processes")
-        option = st.selectbox("Choose an option", ["Add", "Delete", "Update"])
-
-        if option == "Add":
-            with st.form("add_form"):
-                process_id = st.text_input("Enter Process ID:")
-                burst_time = st.number_input("Enter Burst Time:", min_value=1)
-                arrival_time = None
-                priority = None
-
-                if "Shortest Job First" in st.session_state.selected_algorithm or "Priority Scheduling" in st.session_state.selected_algorithm:
-                    arrival_time = st.number_input("Enter Arrival Time:")
-                if "Priority Scheduling" in st.session_state.selected_algorithm:
-                    priority = st.number_input("Enter Priority:")
-
-                submitted = st.form_submit_button("Add Process")
-                if submitted:
-                    st.session_state.processes.append(
-                        {
-                            "Process ID": process_id,
-                            "Burst Time": burst_time,
-                            "Arrival Time": arrival_time,
-                            "Priority": priority,
-                        }
-                    )
-                    st.experimental_rerun()
-
-        elif option == "Delete":
-            process_id = st.selectbox("Select Process to Delete", [p["Process ID"] for p in st.session_state.processes])
-            if st.button("Delete Process"):
-                st.session_state.processes = [p for p in st.session_state.processes if p["Process ID"] != process_id]
-                st.experimental_rerun()
-
-        elif option == "Update":
-            process_id = st.selectbox("Select Process to Update", [p["Process ID"] for p in st.session_state.processes])
-            process = next(p for p in st.session_state.processes if p["Process ID"] == process_id)
-            with st.form("update_form"):
-                burst_time = st.number_input("Update Burst Time:", value=process["Burst Time"])
-                arrival_time = process["Arrival Time"]
-                priority = process["Priority"]
-
-                if arrival_time is not None:
-                    arrival_time = st.number_input("Update Arrival Time:", value=arrival_time)
-                if priority is not None:
-                    priority = st.number_input("Update Priority:", value=priority)
-
-                submitted = st.form_submit_button("Update Process")
-                if submitted:
-                    process.update(
-                        {
-                            "Burst Time": burst_time,
-                            "Arrival Time": arrival_time,
-                            "Priority": priority,
-                        }
-                    )
-                    st.experimental_rerun()
-
         if st.button("Simulate Processes"):
             st.session_state.page = 4
 
@@ -148,16 +119,22 @@ elif st.session_state.page == 3:
 elif st.session_state.page == 4:
     st.title(f"Simulation Results: {st.session_state.selected_algorithm}")
 
-    # Placeholder for Gantt chart and calculations
-    st.write("### Gantt Chart")
-    st.write("(Gantt Chart will be displayed here)")
+    if st.session_state.selected_algorithm == "First Come First Serve":
+        gantt_chart, avg_wt, avg_tat, wt, tat = simulate_fcfs(st.session_state.processes)
+        st.write("### Gantt Chart")
+        display_gantt_chart(gantt_chart)
 
-    st.write("### Simulation Metrics")
-    st.write("Average Waiting Time: (Calculated value)")
-    st.write("Average Turnaround Time: (Calculated value)")
+        st.write("### Simulation Metrics")
+        st.write(f"Average Waiting Time: {avg_wt:.2f}")
+        st.write(f"Average Turnaround Time: {avg_tat:.2f}")
 
-    st.write("### Waiting and Turnaround Time for Each Process")
-    st.write("(Chart will be displayed here)")
+        st.write("### Waiting and Turnaround Time for Each Process")
+        results_df = pd.DataFrame({
+            "Process ID": [p["Process ID"] for p in st.session_state.processes],
+            "Waiting Time": wt,
+            "Turnaround Time": tat,
+        })
+        st.table(results_df)
 
     if st.button("Restart Simulation"):
         reset()
