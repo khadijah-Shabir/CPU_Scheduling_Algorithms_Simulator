@@ -90,7 +90,7 @@ def input_page():
     if st.button("Add Processes"):
         st.session_state.processes = processes
         st.session_state.current_page = 'process_table'
-        st.experimental_rerun()
+       
 
 def process_table_page():
     st.title(f"Process Table for {st.session_state.selected_algorithm}")
@@ -102,7 +102,7 @@ def process_table_page():
     # Simulate Button
     if st.button("Start Simulation"):
         st.session_state.current_page = 'simulation'
-        st.experimental_rerun()
+      
 
 def simulation_page():
     st.title(f"Simulation Results - {st.session_state.selected_algorithm}")
@@ -128,7 +128,7 @@ def simulation_page():
         st.session_state.current_page = 'home'
         st.session_state.selected_algorithm = None
         st.session_state.processes = []
-        st.experimental_rerun()
+  
 
 if __name__ == "__main__":
     main()
